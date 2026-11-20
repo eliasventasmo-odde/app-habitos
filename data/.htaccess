@@ -1,0 +1,4 @@
+# Impide descarga directa del archivo de datos
+<Files "store.json">
+  Require all denied
+</Files>

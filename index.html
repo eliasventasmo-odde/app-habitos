@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Registro de Hábitos Atómicos | Elias & Mónica</title>
+  
+  <!-- PWA & Mobile Meta Tags para Android y iOS (iPhone) -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="theme-color" content="#0284c7" id="meta-theme-color">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Hábitos">
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="theme-elias">
+
+  <!-- ======================================================== -->
+  <!-- 1. PANTALLA DE ACCESO / SELECTOR DE PERFIL -->
+  <!-- ======================================================== -->
+  <div id="login-modal" class="modal-overlay active">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="logo-badge">⚡</div>
+        <h2>La Anatomía de la Constancia</h2>
+        <p class="subtitle">Auditoría personal y registro táctico de hábitos</p>
+      </div>
+
+      <div class="profiles-container">
+        <!-- Perfil Elias -->
+        <button type="button" class="profile-card profile-elias" onclick="app.seleccionarPerfil('elias')">
+          <div class="avatar-circle">E</div>
+          <div class="profile-meta">
+            <span class="profile-name">Elias (Android)</span>
+            <span class="profile-tag">Tema Celeste & Naranja</span>
+          </div>
+        </button>
+
+        <!-- Perfil Mónica -->
+        <button type="button" class="profile-card profile-monica" onclick="app.seleccionarPerfil('monica')">
+          <div class="avatar-circle">M</div>
+          <div class="profile-meta">
+            <span class="profile-name">Mónica (iPhone / iOS)</span>
+            <span class="profile-tag">Tema Morado & Blanco</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Formulario de PIN / Contraseña -->
+      <div id="pin-section" class="pin-section hidden">
+        <div class="pin-user-label">
+          Ingresa el PIN de <strong id="pin-target-name">Elias</strong>:
+        </div>
+        <div class="pin-input-wrap">
+          <input type="password" id="pin-input" inputmode="numeric" maxlength="8" placeholder="PIN (1234)" autofocus>
+          <button type="button" class="btn btn-primary" onclick="app.verificarPin()">Entrar</button>
+        </div>
+        <p id="pin-error" class="pin-error hidden">PIN incorrecto. Inténtalo de nuevo.</p>
+        <button type="button" class="btn-link" onclick="app.cancelarSeleccionPerfil()">← Cambiar de perfil</button>
+      </div>
+
+      <div class="login-footer">
+        <small>💡 <em>«Tengo que estandarizar antes de poder optimizar»</em></small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 2. APLICACIÓN PRINCIPAL -->
+  <!-- ======================================================== -->
+  <div id="app-container" class="app-layout">
+    
+    <!-- BARRA SUPERIOR -->
+    <header class="app-navbar">
+      <div class="nav-left">
+        <div class="brand">
+          <span class="brand-icon">⚡</span>
+          <div>
+            <h1 class="brand-title">Registro Atómico</h1>
+            <span class="brand-sub" id="sync-status-label">🟢 Sincronizado</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <!-- Selector de Mes y Año -->
+        <div class="month-selector">
+          <button class="nav-btn" onclick="app.cambiarMes(-1)" title="Mes anterior">‹</button>
+          <div class="current-month" id="current-month-display">Noviembre 2026</div>
+          <button class="nav-btn" onclick="app.cambiarMes(1)" title="Mes siguiente">›</button>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Estado en vivo del otro usuario (Elias <-> Mónica) -->
+        <div class="partner-pill" id="partner-status-pill" onclick="app.abrirCentroNotificaciones()" title="Ver actividad de tu compañero/a">
+          <span class="partner-dot" id="partner-dot"></span>
+          <span id="partner-status-text">Mónica hoy: 0/6</span>
+        </div>
+
+        <!-- Switch de Usuario Activo -->
+        <div class="user-pill" id="active-user-badge">
+          <span class="user-avatar" id="nav-avatar">E</span>
+          <span class="user-label" id="nav-username">Elias</span>
+        </div>
+
+        <button class="btn btn-secondary btn-sm" onclick="app.abrirCentroNotificaciones()" title="Notificaciones y Alarmas">
+          🔔 <span id="notif-badge-count" class="notif-count hidden">0</span>
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="app.abrirGuiaMovil()" title="Instalar en Android y iPhone">
+          📱 Móvil
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="app.abrirAnalisis()" title="Ver análisis mensual">
+          📊 Gráficos
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="app.abrirConfigHabitos()" title="Configurar 6 hábitos">
+          ⚙️ Hábitos
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="app.cerrarSesion()" title="Cambiar usuario">
+          Salir
+        </button>
+      </div>
+    </header>
+
+    <!-- CUERPO PRINCIPAL -->
+    <main class="main-content">
+
+      <!-- ======================================================== -->
+      <!-- ALARMA CRÍTICA: 2 DÍAS SIN RELLENAR -->
+      <!-- ======================================================== -->
+      <section id="alarm-unfilled-banner" class="alarm-banner hidden">
+        <div class="alarm-icon-pulse">⏰</div>
+        <div class="alarm-body">
+          <strong id="alarm-unfilled-title">¡ALARMA DE CONSTANCIA: 2 DÍAS SIN RELLENAR!</strong>
+          <p id="alarm-unfilled-desc">Tienes hábitos con 2 o más días seguidos en blanco. ¡No dejes que el registro quede vacío! Marca hoy en verde o rojo.</p>
+        </div>
+        <div class="alarm-actions">
+          <button class="btn btn-alarm-action btn-sm" onclick="app.sonarAlarmaManual()">🔊 Probar sonido</button>
+          <button class="btn btn-alarm-dismiss btn-sm" onclick="app.silenciarAlarmaHoy()">Entendido</button>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- NOTIFICACIÓN EN VIVO DEL COMPAÑERO (CUANDO LO HIZO TODO) -->
+      <!-- ======================================================== -->
+      <section id="partner-live-banner" class="partner-notification-banner hidden">
+        <div class="partner-notif-icon">🎉</div>
+        <div class="partner-notif-content">
+          <strong id="partner-notif-title">¡Notificación de Compañero!</strong>
+          <p id="partner-notif-message">¡Mónica ya ha completado TODOS sus 6 hábitos de hoy!</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="app.marcarNotificacionesLeidas()">¡Genial! 👏</button>
+      </section>
+
+      <!-- BANNER: FRASE DE INSPIRACIÓN DEL MES -->
+      <section class="inspiration-card">
+        <div class="inspiration-content">
+          <div class="quote-icon">“</div>
+          <div class="quote-text-wrap">
+            <span class="quote-label">FRASE DE INSPIRACIÓN DEL MES:</span>
+            <div id="inspiration-quote-display" class="inspiration-quote" onclick="app.editarFraseMes()">
+              «Tengo que estandarizar antes de poder optimizar»
+            </div>
+            <input type="text" id="inspiration-quote-input" class="inspiration-input hidden" maxlength="160" placeholder="Escribe aquí tu frase inspiradora del mes...">
+          </div>
+          <button class="btn-icon-action" id="btn-edit-quote" onclick="app.toggleEditarFrase()" title="Editar frase">✏️</button>
+        </div>
+      </section>
+
+      <!-- BARRA DE REGLA INQUEBRANTABLE & ALERTAS -->
+      <section id="alert-banner" class="golden-rule-banner">
+        <div class="rule-icon">🛡️</div>
+        <div class="rule-info">
+          <strong>La Regla Inquebrantable: NUNCA FALLAR DOS VECES</strong>
+          <span id="rule-status-text">Un día saltado es un accidente. Dos seguidos es el inicio de un mal hábito. ¡A por los cuadros verdes!</span>
+        </div>
+        <div class="legend-pills">
+          <span class="legend-pill green">🟩 Verde = Éxito (&lt; 2 min)</span>
+          <span class="legend-pill red">🟥 Rojo = Saltado</span>
+          <span class="legend-pill empty">⏰ Alarma si pasa 2 días vacío</span>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- 3. LA PLANILLA DE HÁBITOS (CUADRÍCULA MENSUAL) -->
+      <!-- ======================================================== -->
+      <section class="sheet-container">
+        <div class="sheet-header-actions">
+          <div class="sheet-title-group">
+            <h2 class="sheet-title">Planilla de Hábitos del Mes</h2>
+            <span class="sheet-subtitle">Toca cada casilla: 1 toque = 🟩 Verde | 2 toques = 🟥 Rojo | 3 toques = Limpiar</span>
+          </div>
+          <div class="sheet-quick-stats">
+            <span class="stat-bubble today-progress" id="stat-today-progress">Hoy: 0/6</span>
+            <span class="stat-bubble green" id="stat-total-greens">0 verdes</span>
+            <span class="stat-bubble red" id="stat-total-reds">0 rojos</span>
+            <span class="stat-bubble rate" id="stat-success-rate">0% éxito</span>
+          </div>
+        </div>
+
+        <!-- TABLA DINÁMICA DE COORDENADAS -->
+        <div class="grid-scroll-wrap">
+          <table class="habit-grid" id="habit-table">
+            <thead>
+              <tr id="grid-header-row">
+                <th class="col-habit-header">HÁBITO Y HÁBITO UMBRAL (&lt; 2 MIN)</th>
+                <!-- Los días del 1 al 28/30/31 se insertan dinámicamente -->
+              </tr>
+            </thead>
+            <tbody id="grid-body">
+              <!-- Las 6 filas de hábitos se insertan dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- CICLO DE MAESTRÍA & CONSEJO TÁCTICO -->
+      <footer class="tactical-footer">
+        <div class="cycle-step">
+          <span class="step-num">1</span>
+          <div>
+            <strong>Prepáralo</strong>
+            <p>Hábito Umbral &lt; 2 min</p>
+          </div>
+        </div>
+        <div class="cycle-arrow">→</div>
+        <div class="cycle-step">
+          <span class="step-num">2</span>
+          <div>
+            <strong>Mídelo</strong>
+            <p>Registra de inmediato (🟩 / 🟥)</p>
+          </div>
+        </div>
+        <div class="cycle-arrow">→</div>
+        <div class="cycle-step">
+          <span class="step-num">3</span>
+          <div>
+            <strong>Protégelo</strong>
+            <p>Alarma automática a los 2 días vacío</p>
+          </div>
+        </div>
+      </footer>
+
+    </main>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 4. MODAL: CONFIGURAR LOS 6 HÁBITOS DEL MES -->
+  <!-- ======================================================== -->
+  <div id="modal-habits" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Configurar tus 6 Hábitos</h3>
+          <p class="modal-sub">Personaliza tus 6 hábitos y su acción mínima (&lt; 2 min)</p>
+        </div>
+        <button class="btn-close" onclick="app.cerrarModal('modal-habits')">✕</button>
+      </div>
+
+      <div class="modal-body" id="habits-config-list">
+        <!-- 6 bloques de hábitos generados dinámicamente -->
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.restablecerHabitosPredeterminados()">Restablecer sugeridos</button>
+        <button class="btn btn-primary" onclick="app.guardarConfigHabitos()">Guardar Hábitos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 5. MODAL: ANÁLISIS MENSUAL Y GRÁFICOS -->
+  <!-- ======================================================== -->
+  <div id="modal-analytics" class="modal-overlay">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 id="analytics-title">Análisis de Hábitos - Noviembre 2026</h3>
+          <p class="modal-sub">Evolución, constancia y auditoría visual de tu desempeño</p>
+        </div>
+        <button class="btn-close" onclick="app.cerrarModal('modal-analytics')">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- TARJETAS DE RESUMEN KPI -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Cuadros Verdes</span>
+            <span class="kpi-value text-green" id="kpi-greens">0</span>
+            <small class="kpi-desc">Evidencias de triunfo (&lt; 2 min)</small>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Cuadros Rojos</span>
+            <span class="kpi-value text-red" id="kpi-reds">0</span>
+            <small class="kpi-desc">Días saltados (omisión honesta)</small>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Efectividad Global</span>
+            <span class="kpi-value text-primary" id="kpi-rate">0%</span>
+            <small class="kpi-desc">Porcentaje de cumplimiento</small>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Mejor Hábito</span>
+            <span class="kpi-value text-accent" id="kpi-best-habit">-</span>
+            <small class="kpi-desc">Mayor constancia acumulada</small>
+          </div>
+        </div>
+
+        <!-- GRÁFICO DE BARRAS POR HÁBITO -->
+        <div class="chart-section">
+          <h4>Constancia por Hábito (Verdes vs Rojos)</h4>
+          <div id="chart-bars-container" class="chart-bars">
+            <!-- Barras generadas dinámicamente -->
+          </div>
+        </div>
+
+        <!-- LISTADO DE HÁBITOS CONSOLIDADOS / GRADUADOS -->
+        <div class="graduation-section">
+          <h4>🏆 Estado de Consolidación (Regla de Estandarización)</h4>
+          <p class="text-muted">Cuando un hábito alcanza 21 días verdes en el mes, la app te avisa que ya lo has logrado y puedes pasar a otro hábito.</p>
+          <div id="consolidation-status-list" class="consolidation-cards">
+            <!-- Tarjetas de consolidación generadas dinámicamente -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.cerrarModal('modal-analytics')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 6. MODAL: CENTRO DE NOTIFICACIONES Y ALARMAS -->
+  <!-- ======================================================== -->
+  <div id="modal-notifications" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>🔔 Alarmas y Notificaciones entre Usuarios</h3>
+          <p class="modal-sub">Avisos de 2 días sin rellenar y actividad de Elias y Mónica</p>
+        </div>
+        <button class="btn-close" onclick="app.cerrarModal('modal-notifications')">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Permiso de Notificaciones del Móvil / Navegador -->
+        <div class="notif-settings-box">
+          <div class="notif-setting-row">
+            <div>
+              <strong>📲 Notificaciones Push y Sonido en este dispositivo</strong>
+              <p class="text-muted" id="push-permission-status">Recibe alertas en tu Android o iPhone cuando el otro termine todo o pases 2 días sin rellenar.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="app.solicitarPermisoNotificaciones()">Activar Alertas</button>
+          </div>
+
+          <div class="notif-setting-row" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--theme-border);">
+            <div>
+              <strong>⏰ Hora de Alarma Recordatoria Diaria</strong>
+              <p class="text-muted">Si llevas 2 días sin rellenar o falta completar el día, sonará a esta hora:</p>
+            </div>
+            <input type="time" id="alarm-time-input" class="time-input" value="21:00" onchange="app.guardarHoraAlarma(this.value)">
+          </div>
+        </div>
+
+        <!-- Botón manual para notificar que ya terminó todo hoy -->
+        <div class="notify-partner-card">
+          <div>
+            <strong>🚀 ¿Ya completaste tus hábitos de hoy?</strong>
+            <p class="text-muted">Se avisa automáticamente al marcar los 6 hábitos, o puedes enviar un aviso inmediato ahora:</p>
+          </div>
+          <div class="notify-btn-group">
+            <button class="btn btn-primary btn-sm" onclick="app.enviarNotificacionCompaneroManual()">🔔 Notificar en la App</button>
+            <button class="btn btn-whatsapp btn-sm" onclick="app.compartirVictoriaWhatsApp()">💬 Avisar por WhatsApp</button>
+          </div>
+        </div>
+
+        <!-- Historial de notificaciones entre Elias y Mónica -->
+        <h4 style="font-size:0.9rem; margin-top:4px;">Historial de Avisos en Vivo</h4>
+        <div id="notifications-feed-list" class="notifications-feed">
+          <!-- Lista de notificaciones -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.marcarNotificacionesLeidas()">Marcar todas como leídas</button>
+        <button class="btn btn-primary" onclick="app.cerrarModal('modal-notifications')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 7. MODAL: GUÍA PARA VER EN EL MÓVIL (ANDROID & iOS) -->
+  <!-- ======================================================== -->
+  <div id="modal-mobile" class="modal-overlay">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3>📱 Cómo tener la App en tu Android y en el iPhone (iOS)</h3>
+          <p class="modal-sub">Instalación directa en pantalla de inicio y sincronización entre ambos móviles</p>
+        </div>
+        <button class="btn-close" onclick="app.cerrarModal('modal-mobile')">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mobile-guides-grid">
+          <!-- Guía Android (Elias) -->
+          <div class="mobile-guide-card android-card">
+            <div class="guide-header">
+              <span class="os-icon">🤖</span>
+              <div>
+                <h4>En Android (Elias)</h4>
+                <span class="os-sub">Google Chrome</span>
+              </div>
+            </div>
+            <ol class="guide-steps">
+              <li>Abre el enlace de la app en <strong>Google Chrome</strong> en tu Android.</li>
+              <li>Toca los <strong>3 puntos (⋮)</strong> arriba a la derecha.</li>
+              <li>Pulsa en <strong>«Instalar aplicación»</strong> o <strong>«Añadir a pantalla de inicio»</strong>.</li>
+              <li>Entra con tu perfil <strong>Elias</strong> y pulsa en <strong>🔔 → Activar Alertas</strong>.</li>
+            </ol>
+          </div>
+
+          <!-- Guía iPhone / iOS (Mónica) -->
+          <div class="mobile-guide-card ios-card">
+            <div class="guide-header">
+              <span class="os-icon">🍎</span>
+              <div>
+                <h4>En iPhone / iOS (Mónica)</h4>
+                <span class="os-sub">Navegador Safari</span>
+              </div>
+            </div>
+            <ol class="guide-steps">
+              <li>Abre el enlace de la app en <strong>Safari</strong> en el iPhone.</li>
+              <li>Toca el botón <strong>Compartir (cuadrado con flecha hacia arriba)</strong> en la barra inferior.</li>
+              <li>Baja y selecciona <strong>«Añadir a pantalla de inicio»</strong>.</li>
+              <li>Ábrela desde el nuevo icono en tu iPhone, entra como <strong>Mónica</strong> y activa las alertas en <strong>🔔</strong>.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="connection-options-box">
+          <h4>🌐 Dos formas de conectar ambos móviles para que se notifiquen entre sí:</h4>
+          <p><strong>Opción 1 (Internet / 4G / 5G desde cualquier lugar - Recomendada):</strong> He dejado una copia lista en tu carpeta <code>SUBIR-A-HOSTINGER/habitos/</code>. Súbela a tu Hostinger en <code>public_html/habitos/</code> y ambos entrarán desde <strong>https://nietomonica.com/habitos/</strong> en cualquier lugar.</p>
+          <p style="margin-top:8px;"><strong>Opción 2 (Por Wi-Fi en casa sin subir nada aún):</strong> Haz doble clic en <code>INICIAR-PARA-MOVILES.bat</code> en tu ordenador. Te mostrará en pantalla la dirección Wi-Fi (ej. <code>http://192.168.1.XX:8766</code>) para abrirla en el Android y en el iPhone al instante.</p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="app.cerrarModal('modal-mobile')">¡Entendido!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 8. MODAL: ¡DÍA COMPLETADO (6/6)! NOTIFICAR AL OTRO -->
+  <!-- ======================================================== -->
+  <div id="modal-day-completed" class="modal-overlay">
+    <div class="modal-card celebration-card">
+      <div class="celebration-badge">🔥</div>
+      <h3 class="celebration-title">¡Has Completado Todo Hoy (6/6)!</h3>
+      <p class="celebration-habit" id="day-completed-subtitle">Se ha enviado la notificación automática a tu compañero/a</p>
+      <div class="celebration-message">
+        <p>Todos tus 6 hábitos del día están registrados. ¡Así se construye la disciplina atómica!</p>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button class="btn btn-whatsapp" onclick="app.compartirVictoriaWhatsApp()">💬 Enviar aviso por WhatsApp también</button>
+        <button class="btn btn-primary" onclick="app.cerrarModal('modal-day-completed')">¡Seguir así!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- 9. MODAL CELEBRACIÓN: HÁBITO CONSOLIDADO (21 DÍAS) -->
+  <!-- ======================================================== -->
+  <div id="modal-celebration" class="modal-overlay">
+    <div class="modal-card celebration-card">
+      <div class="celebration-badge">🏆</div>
+      <h3 class="celebration-title">¡Hábito Estandarizado con Éxito!</h3>
+      <p class="celebration-habit" id="celebration-habit-name">Leer 2 hojas</p>
+      <div class="celebration-message">
+        <p>Has alcanzado el hito de constancia según el método de <em>Hábitos Atómicos</em>.</p>
+        <p class="quote-celebration">«Ya has logrado consolidar este hábito. Forma parte de tu identidad y puedes pasar a un nuevo hábito.»</p>
+      </div>
+      <button class="btn btn-primary" onclick="app.cerrarModal('modal-celebration')">¡Continuar Imparable!</button>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="app.js"></script>
+</body>
+</html>
