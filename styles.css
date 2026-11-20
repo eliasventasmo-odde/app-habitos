@@ -1646,3 +1646,44 @@ body {
     width: 38px;
   }
 }
+
+/* ========================================================
+   TEMA MAURO (Verde Esmeralda / Turquesa Deportivo + Blanco)
+   ======================================================== */
+body.theme-mauro {
+  --theme-primary: #0d9488;        /* Esmeralda / Turquesa oscuro */
+  --theme-primary-hover: #0f766e;
+  --theme-primary-light: #ccfbf1;
+  --theme-primary-border: #99f6e4;
+  
+  --theme-accent: #eab308;         /* Dorado energético */
+  --theme-accent-hover: #ca8a04;
+  --theme-accent-light: #fef9c3;
+  
+  --theme-bg: #f0fdfa;
+  --theme-surface: #ffffff;
+  --theme-surface-subtle: #f5fefa;
+  --theme-text: #134e4a;
+  --theme-text-muted: #64748b;
+  
+  --theme-badge-bg: #ccfbf1;
+  --theme-badge-text: #115e59;
+  --theme-border: #ccfbf1;
+}
+
+.profile-card.profile-mauro:hover {
+  border-color: #0d9488;
+  background: #f0fdfa;
+}
+
+.profile-card.profile-mauro .avatar-circle {
+  background: #0d9488;
+  color: white;
+}
+
+.pin-success {
+  color: var(--color-green);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-top: 8px;
+}

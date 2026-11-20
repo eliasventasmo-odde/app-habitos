@@ -1,9 +1,10 @@
 /**
  * ========================================================
- * REGISTRO ATÓMICO - LÓGICA DE LA APLICACIÓN v2.0
+ * REGISTRO ATÓMICO - LÓGICA DE LA APLICACIÓN v3.0
+ * - 3 Usuarios independientes: Elias, Mónica y Mauro
+ * - Opción para cambiar Contraseña / PIN (sincronizada en servidor)
  * - Alarma automática por 2 días sin rellenar (visual, sonora y push)
- * - Notificación cruzada entre usuarios cuando completan todo (6/6)
- * - Sincronización en tiempo real para Android (Elias) e iOS (Mónica)
+ * - Notificación cruzada a los demás usuarios al completar todo (6/6)
  * ========================================================
  */
 
@@ -12,8 +13,6 @@ const APP_CONFIG = {
     elias: {
       id: 'elias',
       nombre: 'Elias',
-      companeroId: 'monica',
-      companeroNombre: 'Mónica',
       pin: '1234',
       tema: 'theme-elias',
       themeColor: '#0284c7',
@@ -31,8 +30,6 @@ const APP_CONFIG = {
     monica: {
       id: 'monica',
       nombre: 'Mónica',
-      companeroId: 'elias',
-      companeroNombre: 'Elias',
       pin: '1234',
       tema: 'theme-monica',
       themeColor: '#7c3aed',
@@ -45,6 +42,23 @@ const APP_CONFIG = {
         { id: 4, nombre: 'Cuidado personal', umbral: 'Rutina facial e hidratación', hora: '08:30 AM' },
         { id: 5, nombre: 'Actividad física', umbral: 'Ponerse ropa cómoda y estiramientos', hora: '10:00 AM' },
         { id: 6, nombre: 'Desconexión nocturna', umbral: 'Dejar el móvil fuera del dormitorio', hora: '22:30 PM' }
+      ]
+    },
+    mauro: {
+      id: 'mauro',
+      nombre: 'Mauro',
+      pin: '1234',
+      tema: 'theme-mauro',
+      themeColor: '#0d9488',
+      avatar: 'MA',
+      fraseDefault: '«La constancia diaria supera al talento cuando el talento no es constante»',
+      habitosDefault: [
+        { id: 1, nombre: 'Despertar a tiempo', umbral: 'Poner los pies en el suelo al sonar la alarma', hora: '06:30 AM' },
+        { id: 2, nombre: 'Lectura diaria', umbral: 'Leer 2 hojas de mi libro', hora: '07:00 AM' },
+        { id: 3, nombre: 'Ordenar mi espacio', umbral: 'Hacer la cama y despejar escritorio', hora: '07:15 AM' },
+        { id: 4, nombre: 'Entrenamiento / Ejercicio', umbral: 'Ponerme la ropa y calzado de entrenar', hora: '09:00 AM' },
+        { id: 5, nombre: 'Enfoque / Estudio', umbral: 'Abrir el cuaderno o material durante 2 minutos', hora: '11:00 AM' },
+        { id: 6, nombre: 'Hidratación y Nutrición', umbral: 'Tomar un vaso grande de agua antes de comer', hora: '13:30 PM' }
       ]
     }
   },
@@ -70,7 +84,8 @@ class RegistroAtomicoApp {
     ];
 
     this.datos = null;
-    this.datosCompanero = null;
+    this.todosUsuariosDatos = {};
+    this.pinsRemotos = { elias: '1234', monica: '1234', mauro: '1234' };
     this.notificaciones = [];
     this.servidorDisponible = false;
     this.ultimasNotifsVistas = new Set();
@@ -80,17 +95,17 @@ class RegistroAtomicoApp {
   }
 
   async init() {
-    // Registrar Service Worker para PWA en Android e iOS
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
 
-    // Cargar hora de alarma guardada
     const horaGuardada = localStorage.getItem('registro_atomico_hora_alarma') || '21:00';
     const inputHora = document.getElementById('alarm-time-input');
     if (inputHora) inputHora.value = horaGuardada;
 
-    // Verificar si hay usuario en sesión
+    // Pre-cargar estado del servidor (incluyendo PINs actualizados)
+    await this.precargarPinsDesdeServidor();
+
     const usuarioGuardado = localStorage.getItem('registro_atomico_usuario_activo');
     if (usuarioGuardado && APP_CONFIG.USERS[usuarioGuardado]) {
       await this.cargarUsuario(usuarioGuardado);
@@ -99,11 +114,9 @@ class RegistroAtomicoApp {
       this.abrirModal('login-modal');
     }
 
-    // Iniciar sincronización periódica (cada 6 segundos) y reloj de alarma
     this.pollInterval = setInterval(() => this.sincronizarDesdeServidor(true), 6000);
     this.relojAlarmaInterval = setInterval(() => this.chequearRelojAlarmaDiaria(), 45000);
 
-    // Escuchar cambios entre pestañas locales
     window.addEventListener('storage', () => {
       if (this.usuarioActivo) {
         this.cargarDatosLocales();
@@ -112,8 +125,32 @@ class RegistroAtomicoApp {
     });
   }
 
+  async precargarPinsDesdeServidor() {
+    if (!location.protocol.startsWith('http')) return;
+    try {
+      const resp = await fetch('api.php?action=load', { cache: 'no-store' });
+      if (resp.ok) {
+        const store = await resp.json();
+        if (store.pins) {
+          this.pinsRemotos = { ...this.pinsRemotos, ...store.pins };
+          Object.entries(store.pins).forEach(([u, p]) => {
+            if (p) localStorage.setItem(`pin_${u}`, p);
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
+  obtenerOtrosUsuariosIds() {
+    return Object.keys(APP_CONFIG.USERS).filter(id => id !== this.usuarioActivo);
+  }
+
+  obtenerNombresOtrosUsuarios() {
+    return this.obtenerOtrosUsuariosIds().map(id => APP_CONFIG.USERS[id].nombre).join(' y ');
+  }
+
   // ========================================================
-  // SONIDOS SINTETIZADOS (WEB AUDIO API - SIN ARCHIVOS EXTERNOS)
+  // SONIDOS SINTETIZADOS (WEB AUDIO API)
   // ========================================================
   reproducirSonido(tipo = 'alarma') {
     try {
@@ -122,7 +159,6 @@ class RegistroAtomicoApp {
       const ctx = new AudioCtx();
 
       if (tipo === 'alarma') {
-        // Doble pitido de alarma de constancia
         [0, 0.25, 0.5].forEach((offset, idx) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
@@ -136,7 +172,6 @@ class RegistroAtomicoApp {
           osc.stop(ctx.currentTime + offset + 0.2);
         });
       } else if (tipo === 'victoria') {
-        // Acorde alegre cuando alguien completa todos sus hábitos
         [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
@@ -150,9 +185,7 @@ class RegistroAtomicoApp {
           osc.stop(ctx.currentTime + idx * 0.12 + 0.35);
         });
       }
-    } catch (e) {
-      // Ignorar si el navegador bloquea autoplay antes de interacción
-    }
+    } catch (e) {}
   }
 
   sonarAlarmaManual() {
@@ -177,7 +210,7 @@ class RegistroAtomicoApp {
       this.reproducirSonido('victoria');
       this.lanzarNotificacionDispositivo(
         '🔔 ¡Alertas Activadas!',
-        'Te avisaremos si pasas 2 días sin rellenar o cuando tu compañero/a complete todos sus hábitos.'
+        'Te avisaremos si pasas 2 días sin rellenar o cuando otro usuario complete todos sus hábitos.'
       );
     }
   }
@@ -206,9 +239,7 @@ class RegistroAtomicoApp {
       } else {
         new Notification(titulo, { body: cuerpo, icon: 'icon.svg' });
       }
-    } catch (e) {
-      // Fallback silencioso
-    }
+    } catch (e) {}
   }
 
   guardarHoraAlarma(hora) {
@@ -240,7 +271,7 @@ class RegistroAtomicoApp {
   }
 
   // ========================================================
-  // AUTENTICACIÓN Y PERFILES
+  // AUTENTICACIÓN, PERFILES Y CAMBIO DE CONTRASEÑA
   // ========================================================
   seleccionarPerfil(userId) {
     this.perfilPendiente = userId;
@@ -263,12 +294,16 @@ class RegistroAtomicoApp {
     document.getElementById('pin-input').value = '';
   }
 
+  obtenerPinActualUsuario(userId) {
+    return localStorage.getItem(`pin_${userId}`) || this.pinsRemotos[userId] || APP_CONFIG.USERS[userId].pin;
+  }
+
   async verificarPin() {
     const pinIngresado = document.getElementById('pin-input').value.trim();
     if (!this.perfilPendiente) return;
 
-    const user = APP_CONFIG.USERS[this.perfilPendiente];
-    const pinGuardado = localStorage.getItem(`pin_${user.id}`) || user.pin;
+    await this.precargarPinsDesdeServidor();
+    const pinGuardado = this.obtenerPinActualUsuario(this.perfilPendiente);
 
     if (pinIngresado === pinGuardado) {
       await this.cargarUsuario(this.perfilPendiente);
@@ -280,13 +315,85 @@ class RegistroAtomicoApp {
     }
   }
 
+  abrirModalCambiarPin() {
+    if (!this.usuarioActivo) return;
+    const user = APP_CONFIG.USERS[this.usuarioActivo];
+    document.getElementById('change-pin-username').textContent = user.nombre;
+    document.getElementById('current-pin-input').value = '';
+    document.getElementById('new-pin-input').value = '';
+    document.getElementById('confirm-pin-input').value = '';
+    const fb = document.getElementById('change-pin-feedback');
+    fb.classList.add('hidden');
+    fb.textContent = '';
+    this.abrirModal('modal-pin');
+  }
+
+  async guardarNuevoPin() {
+    if (!this.usuarioActivo) return;
+    const actual = document.getElementById('current-pin-input').value.trim();
+    const nuevo = document.getElementById('new-pin-input').value.trim();
+    const confirmar = document.getElementById('confirm-pin-input').value.trim();
+    const fb = document.getElementById('change-pin-feedback');
+
+    fb.className = 'pin-error';
+
+    const pinReal = this.obtenerPinActualUsuario(this.usuarioActivo);
+    if (actual !== pinReal) {
+      fb.textContent = 'La contraseña actual no es correcta.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    if (nuevo.length < 3) {
+      fb.textContent = 'La nueva contraseña debe tener al menos 3 caracteres.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    if (nuevo !== confirmar) {
+      fb.textContent = 'La nueva contraseña y su confirmación no coinciden.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    // Guardar en local y en servidor
+    localStorage.setItem(`pin_${this.usuarioActivo}`, nuevo);
+    this.pinsRemotos[this.usuarioActivo] = nuevo;
+
+    if (location.protocol.startsWith('http')) {
+      try {
+        const resp = await fetch('api.php?action=change_pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: this.usuarioActivo,
+            pinActual: actual,
+            pinNuevo: nuevo
+          })
+        });
+        const data = await resp.json();
+        if (resp.status === 403 || data.ok === false) {
+          fb.textContent = data.error || 'Error al actualizar la contraseña en el servidor.';
+          fb.classList.remove('hidden');
+          return;
+        }
+      } catch (e) {}
+    }
+
+    fb.className = 'pin-success';
+    fb.textContent = '✅ ¡Contraseña actualizada correctamente!';
+    fb.classList.remove('hidden');
+    setTimeout(() => {
+      this.cerrarModal('modal-pin');
+    }, 900);
+  }
+
   async cargarUsuario(userId) {
     this.usuarioActivo = userId;
     this.alarmaSonadaSesion = false;
     localStorage.setItem('registro_atomico_usuario_activo', userId);
     const user = APP_CONFIG.USERS[userId];
 
-    // Aplicar tema y color de barra de estado en el móvil
     document.body.className = user.tema;
     const metaTheme = document.getElementById('meta-theme-color');
     if (metaTheme) metaTheme.setAttribute('content', user.themeColor);
@@ -315,33 +422,23 @@ class RegistroAtomicoApp {
   }
 
   cargarDatosLocales() {
-    const user = APP_CONFIG.USERS[this.usuarioActivo];
-    const raw = localStorage.getItem(this.getStorageKey(this.usuarioActivo));
-    if (raw) {
-      try {
-        this.datos = JSON.parse(raw);
-      } catch (e) {
-        this.datos = this.crearDatosIniciales(user);
+    Object.keys(APP_CONFIG.USERS).forEach(uid => {
+      const uCfg = APP_CONFIG.USERS[uid];
+      const raw = localStorage.getItem(this.getStorageKey(uid));
+      if (raw) {
+        try {
+          this.todosUsuariosDatos[uid] = JSON.parse(raw);
+        } catch (e) {
+          this.todosUsuariosDatos[uid] = this.crearDatosIniciales(uCfg);
+        }
+      } else {
+        this.todosUsuariosDatos[uid] = this.crearDatosIniciales(uCfg);
       }
-    } else {
-      this.datos = this.crearDatosIniciales(user);
-      localStorage.setItem(this.getStorageKey(this.usuarioActivo), JSON.stringify(this.datos));
-    }
+    });
 
-    // Cargar también copia local del compañero
-    const compUser = APP_CONFIG.USERS[user.companeroId];
-    const rawComp = localStorage.getItem(this.getStorageKey(compUser.id));
-    if (rawComp) {
-      try {
-        this.datosCompanero = JSON.parse(rawComp);
-      } catch (e) {
-        this.datosCompanero = this.crearDatosIniciales(compUser);
-      }
-    } else {
-      this.datosCompanero = this.crearDatosIniciales(compUser);
-    }
+    this.datos = this.todosUsuariosDatos[this.usuarioActivo];
+    localStorage.setItem(this.getStorageKey(this.usuarioActivo), JSON.stringify(this.datos));
 
-    // Cargar notificaciones locales
     const rawNotifs = localStorage.getItem('registro_atomico_notificaciones');
     this.notificaciones = rawNotifs ? JSON.parse(rawNotifs) : [];
   }
@@ -370,20 +467,26 @@ class RegistroAtomicoApp {
       this.servidorDisponible = true;
       this.actualizarIndicadorSync(true);
 
-      const user = APP_CONFIG.USERS[this.usuarioActivo];
-      const compId = user.companeroId;
-
-      if (store.usuarios && store.usuarios[this.usuarioActivo]) {
-        this.datos = store.usuarios[this.usuarioActivo];
-        localStorage.setItem(this.getStorageKey(this.usuarioActivo), JSON.stringify(this.datos));
-      } else if (this.datos) {
-        // Subir datos iniciales al servidor
-        await this.guardarDatos();
+      if (store.pins) {
+        this.pinsRemotos = { ...this.pinsRemotos, ...store.pins };
+        Object.entries(store.pins).forEach(([u, p]) => {
+          if (p) localStorage.setItem(`pin_${u}`, p);
+        });
       }
 
-      if (store.usuarios && store.usuarios[compId]) {
-        this.datosCompanero = store.usuarios[compId];
-        localStorage.setItem(this.getStorageKey(compId), JSON.stringify(this.datosCompanero));
+      if (store.usuarios) {
+        Object.keys(APP_CONFIG.USERS).forEach(uid => {
+          if (store.usuarios[uid]) {
+            this.todosUsuariosDatos[uid] = store.usuarios[uid];
+            localStorage.setItem(this.getStorageKey(uid), JSON.stringify(store.usuarios[uid]));
+          }
+        });
+
+        if (store.usuarios[this.usuarioActivo]) {
+          this.datos = store.usuarios[this.usuarioActivo];
+        } else if (this.datos) {
+          await this.guardarDatos();
+        }
       }
 
       if (Array.isArray(store.notificaciones)) {
@@ -404,14 +507,15 @@ class RegistroAtomicoApp {
     const label = document.getElementById('sync-status-label');
     if (!label) return;
     if (online) {
-      label.textContent = '🟢 Sincronizado en vivo (Android & iOS)';
+      label.textContent = '🟢 Sincronizado en vivo (Elias, Mónica & Mauro)';
     } else {
-      label.textContent = '💾 Modo Local (Abre con Servidor Móvil o Hostinger para conectar ambos teléfonos)';
+      label.textContent = '💾 Modo Local';
     }
   }
 
   async guardarDatos() {
     if (!this.usuarioActivo || !this.datos) return;
+    this.todosUsuariosDatos[this.usuarioActivo] = this.datos;
     localStorage.setItem(this.getStorageKey(this.usuarioActivo), JSON.stringify(this.datos));
 
     if (location.protocol.startsWith('http')) {
@@ -424,9 +528,7 @@ class RegistroAtomicoApp {
             datos: this.datos
           })
         });
-      } catch (e) {
-        // Guardado en localStorage ya asegurado
-      }
+      } catch (e) {}
     }
   }
 
@@ -543,12 +645,10 @@ class RegistroAtomicoApp {
     const habitosEnAlarma = [];
 
     habitos.forEach(habito => {
-      // Comprobar si los últimos 2 días hasta hoy (ej. ayer y hoy, o anteayer y ayer) están en blanco
       const estadoHoy = marcasMes[`${habito.id}_${diaLimite}`] || APP_CONFIG.ESTADOS.VACIO;
       const estadoAyer = marcasMes[`${habito.id}_${diaLimite - 1}`] || APP_CONFIG.ESTADOS.VACIO;
       const estadoAnteayer = diaLimite >= 3 ? (marcasMes[`${habito.id}_${diaLimite - 2}`] || APP_CONFIG.ESTADOS.VACIO) : -1;
 
-      // Contar cuántos días consecutivos hacia atrás desde hoy están sin rellenar
       let diasSinRellenar = 0;
       const diasVaciosIndices = [];
       for (let d = diaLimite; d >= 1; d--) {
@@ -561,10 +661,7 @@ class RegistroAtomicoApp {
         }
       }
 
-      // También si hoy ya rellenó pero dejó 2 días anteriores en blanco seguidos (ayer y anteayer)
-      let huecoAnterior = false;
       if (diasSinRellenar < 2 && diaLimite >= 3 && estadoAyer === APP_CONFIG.ESTADOS.VACIO && estadoAnteayer === APP_CONFIG.ESTADOS.VACIO) {
-        huecoAnterior = true;
         diasSinRellenar = 2;
         diasVaciosIndices.push(diaLimite - 1, diaLimite - 2);
       }
@@ -751,7 +848,6 @@ class RegistroAtomicoApp {
       this.datos.marcas[mesKey][cellKey] = nuevoEstado;
     }
 
-    // Quitar silencio de alarma si empieza a rellenar
     sessionStorage.removeItem(`alarma_silenciada_${this.usuarioActivo}_${this.getFechaHoyISO()}`);
 
     await this.guardarDatos();
@@ -792,12 +888,12 @@ class RegistroAtomicoApp {
 
     const diaClave = `${mesKey}-${String(dia).padStart(2, '0')}`;
 
-    // Si acaba de completar los 6 hábitos de ese día (6/6)
     if (progreso.marcados >= 6 && !this.datos.diasCompletadosNotificados[diaClave]) {
       this.datos.diasCompletadosNotificados[diaClave] = true;
       await this.guardarDatos();
 
       const user = APP_CONFIG.USERS[this.usuarioActivo];
+      const nombresOtros = this.obtenerNombresOtrosUsuarios();
       const detalle = progreso.verdes === 6
         ? '¡Pleno de 6/6 cuadros VERDES!'
         : `(${progreso.verdes} verdes y ${progreso.rojos} registrados)`;
@@ -807,7 +903,7 @@ class RegistroAtomicoApp {
 
       this.reproducirSonido('victoria');
       document.getElementById('day-completed-subtitle').textContent =
-        `Se ha enviado una notificación automática a ${user.companeroNombre} (${detalle})`;
+        `Se ha enviado una notificación automática a ${nombresOtros} (${detalle})`;
       this.abrirModal('modal-day-completed');
     } else if (progreso.marcados < 6 && this.datos.diasCompletadosNotificados[diaClave]) {
       delete this.datos.diasCompletadosNotificados[diaClave];
@@ -816,14 +912,14 @@ class RegistroAtomicoApp {
   }
 
   // ========================================================
-  // NOTIFICACIONES ENTRE ELIAS (ANDROID) Y MÓNICA (iOS)
+  // NOTIFICACIONES ENTRE ELIAS, MÓNICA Y MAURO
   // ========================================================
   async enviarNotificacionAlCompanero(mensaje, tipo = 'completado', fechaClave = '') {
     const user = APP_CONFIG.USERS[this.usuarioActivo];
     const nueva = {
       id: `notif_${Date.now()}`,
       de: user.id,
-      para: user.companeroId,
+      para: 'todos',
       mensaje,
       tipo,
       fechaClave: fechaClave || this.getFechaHoyISO(),
@@ -832,12 +928,10 @@ class RegistroAtomicoApp {
       leidaPor: [user.id]
     };
 
-    // Guardar en localStorage compartido
     this.notificaciones.unshift(nueva);
-    this.notificaciones = this.notificaciones.slice(0, 30);
+    this.notificaciones = this.notificaciones.slice(0, 40);
     localStorage.setItem('registro_atomico_notificaciones', JSON.stringify(this.notificaciones));
 
-    // Enviar al servidor (Hostinger o Servidor Wi-Fi Móvil)
     if (location.protocol.startsWith('http')) {
       try {
         await fetch('api.php?action=notify', {
@@ -845,9 +939,7 @@ class RegistroAtomicoApp {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nueva)
         });
-      } catch (e) {
-        // Fallback local
-      }
+      } catch (e) {}
     }
 
     this.renderizarFeedNotificaciones();
@@ -855,6 +947,7 @@ class RegistroAtomicoApp {
 
   async enviarNotificacionCompaneroManual() {
     const user = APP_CONFIG.USERS[this.usuarioActivo];
+    const nombresOtros = this.obtenerNombresOtrosUsuarios();
     const progresoHoy = this.calcularProgresoDia(this.datos, this.fechaActual.getDate(), this.getMesKeyActual());
     const msg = progresoHoy.marcados >= 6
       ? `🔥 ¡${user.nombre} ya ha terminado TODOS sus 6 hábitos de hoy (${progresoHoy.verdes}/6 verdes)!`
@@ -862,14 +955,14 @@ class RegistroAtomicoApp {
 
     await this.enviarNotificacionAlCompanero(msg, 'manual');
     this.reproducirSonido('victoria');
-    alert(`✅ Notificación enviada a ${user.companeroNombre}.`);
+    alert(`✅ Notificación enviada a ${nombresOtros}.`);
   }
 
   compartirVictoriaWhatsApp() {
     const user = APP_CONFIG.USERS[this.usuarioActivo];
     const progresoHoy = this.calcularProgresoDia(this.datos, this.fechaActual.getDate(), this.getMesKeyActual());
     const texto = encodeURIComponent(
-      `🔥 ¡Hola ${user.companeroNombre}! Ya he completado todos mis hábitos de hoy en el Registro Atómico (${progresoHoy.verdes}/6 cuadros verdes 🟩). ¡Te toca a ti!`
+      `🔥 ¡Equipo! Soy ${user.nombre} y ya he completado todos mis hábitos de hoy en el Registro Atómico (${progresoHoy.verdes}/6 cuadros verdes 🟩). ¡Os toca!`
     );
     window.open(`https://wa.me/?text=${texto}`, '_blank');
   }
@@ -890,26 +983,33 @@ class RegistroAtomicoApp {
 
   actualizarEstadoCompaneroUI() {
     if (!this.usuarioActivo) return;
-    const user = APP_CONFIG.USERS[this.usuarioActivo];
     const pill = document.getElementById('partner-status-pill');
     const dot = document.getElementById('partner-dot');
     const text = document.getElementById('partner-status-text');
 
-    const progComp = this.calcularProgresoDia(
-      this.datosCompanero,
-      this.fechaActual.getDate(),
-      this.getMesKeyActual()
-    );
+    const otrosIds = this.obtenerOtrosUsuariosIds();
+    const diaHoy = this.fechaActual.getDate();
+    const mesActualKey = this.getMesKeyActual();
 
-    if (progComp.marcados >= 6) {
+    let algunoCompleto = false;
+    const resumenes = otrosIds.map(uid => {
+      const uCfg = APP_CONFIG.USERS[uid];
+      const prog = this.calcularProgresoDia(this.todosUsuariosDatos[uid], diaHoy, mesActualKey);
+      if (prog.marcados >= 6) {
+        algunoCompleto = true;
+        return `🎉 ${uCfg.nombre}: 6/6`;
+      }
+      return `${uCfg.nombre}: ${prog.marcados}/6`;
+    });
+
+    if (algunoCompleto) {
       pill.className = 'partner-pill completed-all';
       dot.className = 'partner-dot done';
-      text.textContent = `🎉 ¡${user.companeroNombre} hizo todo hoy (6/6)!`;
     } else {
       pill.className = 'partner-pill';
       dot.className = 'partner-dot';
-      text.textContent = `${user.companeroNombre} hoy: ${progComp.marcados}/6`;
     }
+    text.textContent = resumenes.join(' · ');
   }
 
   actualizarBannerNotificacionCompanero() {
@@ -958,7 +1058,7 @@ class RegistroAtomicoApp {
   }
 
   abrirCentroNotificaciones() {
-    this. actualizarEstadoPermisoUI();
+    this.actualizarEstadoPermisoUI();
     this.renderizarFeedNotificaciones();
     this.abrirModal('modal-notifications');
   }
@@ -968,7 +1068,7 @@ class RegistroAtomicoApp {
     if (!container) return;
 
     if (!this.notificaciones || this.notificaciones.length === 0) {
-      container.innerHTML = `<p class="text-muted">Aún no hay notificaciones registradas. Cuando tú o tu compañero/a completen los 6 hábitos del día, aparecerán aquí.</p>`;
+      container.innerHTML = `<p class="text-muted">Aún no hay notificaciones registradas. Cuando Elias, Mónica o Mauro completen sus 6 hábitos del día, aparecerán aquí.</p>`;
       return;
     }
 

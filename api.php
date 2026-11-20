@@ -1,5 +1,5 @@
 <?php
-// api.php - Sincronización en tiempo real entre el Android de Elias y el iPhone de Mónica
+// api.php - Sincronización en tiempo real entre Elias, Mónica y Mauro (Android & iOS)
 header("Content-Type: application/json; charset=utf-8");
 header("Cache-Control: no-store, no-cache, must-revalidate");
 header("Access-Control-Allow-Origin: *");
@@ -14,13 +14,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 date_default_timezone_set('Europe/Madrid');
 
 const ARCHIVO = __DIR__ . '/data/store.json';
+const USUARIOS_VALIDOS = ['elias', 'monica', 'mauro'];
 
 function estadoInicial() {
     return [
-        'version' => 2,
+        'version' => 3,
         'usuarios' => [
             'elias' => null,
-            'monica' => null
+            'monica' => null,
+            'mauro' => null
+        ],
+        'pins' => [
+            'elias' => '1234',
+            'monica' => '1234',
+            'mauro' => '1234'
         ],
         'notificaciones' => []
     ];
@@ -36,7 +43,25 @@ function leerStore() {
         return $ini;
     }
     $datos = json_decode(@file_get_contents(ARCHIVO), true);
-    return is_array($datos) ? $datos : estadoInicial();
+    if (!is_array($datos)) {
+        return estadoInicial();
+    }
+    // Asegurar que exista mauro y pins en stores anteriores
+    if (!isset($datos['usuarios']) || !is_array($datos['usuarios'])) {
+        $datos['usuarios'] = ['elias' => null, 'monica' => null, 'mauro' => null];
+    } elseif (!array_key_exists('mauro', $datos['usuarios'])) {
+        $datos['usuarios']['mauro'] = null;
+    }
+    if (!isset($datos['pins']) || !is_array($datos['pins'])) {
+        $datos['pins'] = ['elias' => '1234', 'monica' => '1234', 'mauro' => '1234'];
+    } else {
+        foreach (USUARIOS_VALIDOS as $u) {
+            if (empty($datos['pins'][$u])) {
+                $datos['pins'][$u] = '1234';
+            }
+        }
+    }
+    return $datos;
 }
 
 function modificarStore(callable $cambio) {
@@ -54,6 +79,12 @@ function modificarStore(callable $cambio) {
     $store = json_decode($contenido, true);
     if (!is_array($store)) {
         $store = estadoInicial();
+    }
+    if (!isset($store['usuarios']['mauro'])) {
+        $store['usuarios']['mauro'] = $store['usuarios']['mauro'] ?? null;
+    }
+    if (!isset($store['pins']) || !is_array($store['pins'])) {
+        $store['pins'] = ['elias' => '1234', 'monica' => '1234', 'mauro' => '1234'];
     }
 
     $res = $cambio($store);
@@ -81,7 +112,7 @@ $entrada = json_decode(file_get_contents('php://input'), true) ?: [];
 if ($accion === 'save_user') {
     $userId = $entrada['userId'] ?? '';
     $datosUsuario = $entrada['datos'] ?? null;
-    if (!in_array($userId, ['elias', 'monica'], true) || !is_array($datosUsuario)) {
+    if (!in_array($userId, USUARIOS_VALIDOS, true) || !is_array($datosUsuario)) {
         http_response_code(400);
         echo json_encode(['error' => 'Datos de usuario inválidos']);
         exit;
@@ -92,9 +123,31 @@ if ($accion === 'save_user') {
     });
 }
 
+if ($accion === 'change_pin') {
+    $userId = $entrada['userId'] ?? '';
+    $pinActual = trim((string)($entrada['pinActual'] ?? ''));
+    $pinNuevo = trim((string)($entrada['pinNuevo'] ?? ''));
+
+    if (!in_array($userId, USUARIOS_VALIDOS, true) || $pinNuevo === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Datos de contraseña inválidos']);
+        exit;
+    }
+
+    modificarStore(function (&$store) use ($userId, $pinActual, $pinNuevo) {
+        $pinGuardado = $store['pins'][$userId] ?? '1234';
+        if ($pinActual !== $pinGuardado) {
+            http_response_code(403);
+            return ['ok' => false, 'error' => 'La contraseña actual no es correcta'];
+        }
+        $store['pins'][$userId] = $pinNuevo;
+        return ['ok' => true, 'store' => $store];
+    });
+}
+
 if ($accion === 'notify') {
     $de = $entrada['de'] ?? '';
-    $para = $entrada['para'] ?? '';
+    $para = $entrada['para'] ?? 'todos';
     $mensaje = trim((string)($entrada['mensaje'] ?? ''));
     $tipo = $entrada['tipo'] ?? 'completado';
     $fechaClave = $entrada['fechaClave'] ?? date('Y-m-d');
@@ -118,11 +171,10 @@ if ($accion === 'notify') {
             'fechaClave' => $fechaClave,
             'hora' => date('d/m/Y H:i'),
             'timestamp' => time(),
-            'leidaPor' => []
+            'leidaPor' => [$de]
         ];
         array_unshift($store['notificaciones'], $nueva);
-        // Mantener solo las últimas 30 notificaciones
-        $store['notificaciones'] = array_slice($store['notificaciones'], 0, 30);
+        $store['notificaciones'] = array_slice($store['notificaciones'], 0, 40);
         return ['ok' => true, 'notificacion' => $nueva, 'store' => $store];
     });
 }
