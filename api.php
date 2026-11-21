@@ -33,6 +33,27 @@ function estadoInicial() {
     ];
 }
 
+function normalizarDatosUsuario($u) {
+    if (!is_array($u)) return null;
+    foreach (['frases', 'marcas', 'celebrados', 'diasCompletadosNotificados'] as $campo) {
+        if (!isset($u[$campo]) || !is_array($u[$campo]) || empty($u[$campo])) {
+            $u[$campo] = new stdClass();
+        } elseif ($campo === 'marcas') {
+            foreach ($u['marcas'] as $mes => $mapaMes) {
+                if (!is_array($mapaMes) || empty($mapaMes)) {
+                    $u['marcas'][$mes] = new stdClass();
+                } else {
+                    $u['marcas'][$mes] = (object)$mapaMes;
+                }
+            }
+            $u['marcas'] = (object)$u['marcas'];
+        } else {
+            $u[$campo] = (object)$u[$campo];
+        }
+    }
+    return $u;
+}
+
 function leerStore() {
     if (!file_exists(ARCHIVO)) {
         if (!is_dir(dirname(ARCHIVO))) {
@@ -49,8 +70,10 @@ function leerStore() {
     // Asegurar que exista mauro y pins en stores anteriores
     if (!isset($datos['usuarios']) || !is_array($datos['usuarios'])) {
         $datos['usuarios'] = ['elias' => null, 'monica' => null, 'mauro' => null];
-    } elseif (!array_key_exists('mauro', $datos['usuarios'])) {
-        $datos['usuarios']['mauro'] = null;
+    } else {
+        foreach (USUARIOS_VALIDOS as $u) {
+            $datos['usuarios'][$u] = isset($datos['usuarios'][$u]) ? normalizarDatosUsuario($datos['usuarios'][$u]) : null;
+        }
     }
     if (!isset($datos['pins']) || !is_array($datos['pins'])) {
         $datos['pins'] = ['elias' => '1234', 'monica' => '1234', 'mauro' => '1234'];
@@ -88,6 +111,14 @@ function modificarStore(callable $cambio) {
     }
 
     $res = $cambio($store);
+
+    if (isset($store['usuarios']) && is_array($store['usuarios'])) {
+        foreach (USUARIOS_VALIDOS as $u) {
+            if (isset($store['usuarios'][$u])) {
+                $store['usuarios'][$u] = normalizarDatosUsuario($store['usuarios'][$u]);
+            }
+        }
+    }
 
     ftruncate($fp, 0);
     rewind($fp);

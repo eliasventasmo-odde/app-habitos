@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=4.0">
 </head>
 <body class="theme-elias">
 
@@ -72,6 +72,19 @@
           <button type="button" class="btn btn-primary" onclick="app.verificarPin()">Entrar</button>
         </div>
         <p id="pin-error" class="pin-error hidden">Contraseña incorrecta. Inténtalo de nuevo.</p>
+
+        <!-- Opción para cambiar la contraseña aquí mismo en la entrada -->
+        <div class="login-change-pin-wrap">
+          <button type="button" class="btn-link" onclick="app.toggleCambiarPinEnLogin()">🔑 Cambiar mi contraseña aquí</button>
+          <div id="login-change-pin-box" class="login-change-pin-box hidden">
+            <input type="password" id="login-old-pin" maxlength="20" placeholder="Contraseña actual (ej. 1234)">
+            <input type="password" id="login-new-pin" maxlength="20" placeholder="Nueva contraseña (mín. 3 caract.)">
+            <input type="password" id="login-confirm-pin" maxlength="20" placeholder="Confirmar nueva contraseña">
+            <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="app.guardarPinDesdeLogin()">Guardar nueva contraseña</button>
+            <p id="login-change-pin-feedback" class="pin-error hidden"></p>
+          </div>
+        </div>
+
         <button type="button" class="btn-link" onclick="app.cancelarSeleccionPerfil()">← Cambiar de perfil</button>
       </div>
 
@@ -522,6 +535,6 @@
   </div>
 
   <!-- SCRIPTS -->
-  <script src="app.js"></script>
+  <script src="app.js?v=4.0"></script>
 </body>
 </html>

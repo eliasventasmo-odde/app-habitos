@@ -1687,3 +1687,33 @@ body.theme-mauro {
   font-weight: 700;
   margin-top: 8px;
 }
+
+.login-change-pin-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.login-change-pin-box {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid #cbd5e1;
+}
+
+.login-change-pin-box input {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  outline: none;
+  text-align: center;
+}
+
+.login-change-pin-box input:focus {
+  border-color: #0284c7;
+}

@@ -74,47 +74,48 @@ def subir():
         elif "domains" in listado:
             ftp.cwd("domains/nietomonica.com/public_html")
 
-        # Crear carpeta habitos y habitos/data
-        try:
-            ftp.mkd("habitos")
-        except Exception:
-            pass
-        ftp.cwd("habitos")
+        # Subir tanto en /habitos como en /marketingmo/habitos si existe marketingmo
+        raiz_public = ftp.pwd()
+        destinos = ["habitos"]
+        if "marketingmo" in ftp.nlst():
+            destinos.append("marketingmo/habitos")
 
-        try:
-            ftp.mkd("data")
-        except Exception:
-            pass
-
-        # Subir archivos principales
         archivos_raiz = ["index.html", "styles.css", "app.js", "api.php", "manifest.json", "sw.js", "icon.svg"]
-        for nombre in archivos_raiz:
-            ruta_local = ORIGEN / nombre
-            if ruta_local.exists():
-                with open(ruta_local, "rb") as f:
-                    ftp.storbinary(f"STOR {nombre}", f)
-                print(f"  [OK] Subido: habitos/{nombre}")
 
-        # Subir data/.htaccess y data/store.json (solo si store.json no existe aún en el servidor)
-        ftp.cwd("data")
-        archivos_remotos_data = ftp.nlst()
+        for dest in destinos:
+            ftp.cwd(raiz_public)
+            asegurar_directorio_ftp(ftp, dest)
+            try:
+                ftp.mkd("data")
+            except Exception:
+                pass
 
-        htaccess_local = ORIGEN / "data" / ".htaccess"
-        if htaccess_local.exists():
-            with open(htaccess_local, "rb") as f:
-                ftp.storbinary("STOR .htaccess", f)
-            print("  [OK] Subido: habitos/data/.htaccess")
+            for nombre in archivos_raiz:
+                ruta_local = ORIGEN / nombre
+                if ruta_local.exists():
+                    with open(ruta_local, "rb") as f:
+                        ftp.storbinary(f"STOR {nombre}", f)
+                    print(f"  [OK] Subido: {dest}/{nombre}")
 
-        store_local = ORIGEN / "data" / "store.json"
-        if "store.json" not in archivos_remotos_data and store_local.exists():
-            with open(store_local, "rb") as f:
-                ftp.storbinary("STOR store.json", f)
-            print("  [OK] Subido inicial: habitos/data/store.json")
-        else:
-            print("  [INFO] store.json ya existe en el servidor (se respeta sin sobrescribir).")
+            ftp.cwd("data")
+            archivos_remotos_data = ftp.nlst()
+
+            htaccess_local = ORIGEN / "data" / ".htaccess"
+            if htaccess_local.exists():
+                with open(htaccess_local, "rb") as f:
+                    ftp.storbinary("STOR .htaccess", f)
+                print(f"  [OK] Subido: {dest}/data/.htaccess")
+
+            store_local = ORIGEN / "data" / "store.json"
+            if "store.json" not in archivos_remotos_data and store_local.exists():
+                with open(store_local, "rb") as f:
+                    ftp.storbinary("STOR store.json", f)
+                print(f"  [OK] Subido inicial: {dest}/data/store.json")
+            else:
+                print(f"  [INFO] {dest}/data/store.json ya existe en el servidor (se respeta sin sobrescribir).")
 
     print("\n¡DESPLIEGUE COMPLETADO CON ÉXITO!")
-    print("URL pública: https://nietomonica.com/habitos/")
+    print("URL pública: https://nietomonica.com/marketingmo/habitos/")
 
 
 def configurar_interactivo():

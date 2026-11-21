@@ -1,5 +1,5 @@
-// sw.js - Service Worker para PWA (Android & iOS) y Notificaciones v3
-const CACHE_NAME = 'habitos-atomicos-v3';
+// sw.js - Service Worker para PWA (Android & iOS) y Notificaciones v4
+const CACHE_NAME = 'habitos-atomicos-v4';
 const ASSETS = [
   './',
   './index.html',

@@ -279,6 +279,10 @@ class RegistroAtomicoApp {
     document.getElementById('pin-target-name').textContent = user.nombre;
     document.getElementById('pin-section').classList.remove('hidden');
     document.getElementById('pin-error').classList.add('hidden');
+    const changeBox = document.getElementById('login-change-pin-box');
+    if (changeBox) changeBox.classList.add('hidden');
+    const fb = document.getElementById('login-change-pin-feedback');
+    if (fb) fb.classList.add('hidden');
     const input = document.getElementById('pin-input');
     input.value = '';
     input.focus();
@@ -292,6 +296,89 @@ class RegistroAtomicoApp {
     this.perfilPendiente = null;
     document.getElementById('pin-section').classList.add('hidden');
     document.getElementById('pin-input').value = '';
+    const changeBox = document.getElementById('login-change-pin-box');
+    if (changeBox) changeBox.classList.add('hidden');
+  }
+
+  toggleCambiarPinEnLogin() {
+    const box = document.getElementById('login-change-pin-box');
+    const fb = document.getElementById('login-change-pin-feedback');
+    if (!box) return;
+    box.classList.toggle('hidden');
+    if (fb) fb.classList.add('hidden');
+    if (!box.classList.contains('hidden')) {
+      document.getElementById('login-old-pin').value = '';
+      document.getElementById('login-new-pin').value = '';
+      document.getElementById('login-confirm-pin').value = '';
+      document.getElementById('login-old-pin').focus();
+    }
+  }
+
+  async guardarPinDesdeLogin() {
+    const targetUser = this.perfilPendiente;
+    if (!targetUser) return;
+
+    const actual = document.getElementById('login-old-pin').value.trim();
+    const nuevo = document.getElementById('login-new-pin').value.trim();
+    const confirmar = document.getElementById('login-confirm-pin').value.trim();
+    const fb = document.getElementById('login-change-pin-feedback');
+
+    await this.precargarPinsDesdeServidor();
+    const pinReal = this.obtenerPinActualUsuario(targetUser);
+
+    fb.className = 'pin-error';
+
+    if (actual !== pinReal) {
+      fb.textContent = 'La contraseña actual no es correcta.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    if (nuevo.length < 3) {
+      fb.textContent = 'La nueva contraseña debe tener al menos 3 caracteres.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    if (nuevo !== confirmar) {
+      fb.textContent = 'La nueva contraseña y su confirmación no coinciden.';
+      fb.classList.remove('hidden');
+      return;
+    }
+
+    localStorage.setItem(`pin_${targetUser}`, nuevo);
+    this.pinsRemotos[targetUser] = nuevo;
+
+    if (location.protocol.startsWith('http')) {
+      try {
+        const resp = await fetch('api.php?action=change_pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: targetUser,
+            pinActual: actual,
+            pinNuevo: nuevo
+          })
+        });
+        const data = await resp.json();
+        if (resp.status === 403 || data.ok === false) {
+          fb.textContent = data.error || 'Error al actualizar la contraseña en el servidor.';
+          fb.classList.remove('hidden');
+          return;
+        }
+      } catch (e) {}
+    }
+
+    fb.className = 'pin-success';
+    fb.textContent = '✅ ¡Contraseña cambiada! Entrando...';
+    fb.classList.remove('hidden');
+    document.getElementById('pin-input').value = nuevo;
+
+    setTimeout(async () => {
+      await this.cargarUsuario(targetUser);
+      this.cerrarModal('login-modal');
+      this.cancelarSeleccionPerfil();
+    }, 700);
   }
 
   obtenerPinActualUsuario(userId) {
@@ -421,13 +508,55 @@ class RegistroAtomicoApp {
     return `registro_atomico_data_${userId}`;
   }
 
+  normalizarDatosUsuario(rawDatos, userCfg) {
+    const base = this.crearDatosIniciales(userCfg);
+    if (!rawDatos || typeof rawDatos !== 'object') return base;
+    return {
+      habitos: Array.isArray(rawDatos.habitos) && rawDatos.habitos.length > 0
+        ? rawDatos.habitos
+        : base.habitos,
+      frases: (rawDatos.frases && !Array.isArray(rawDatos.frases) && typeof rawDatos.frases === 'object')
+        ? rawDatos.frases
+        : {},
+      marcas: (rawDatos.marcas && !Array.isArray(rawDatos.marcas) && typeof rawDatos.marcas === 'object')
+        ? rawDatos.marcas
+        : {},
+      celebrados: (rawDatos.celebrados && !Array.isArray(rawDatos.celebrados) && typeof rawDatos.celebrados === 'object')
+        ? rawDatos.celebrados
+        : {},
+      diasCompletadosNotificados: (rawDatos.diasCompletadosNotificados && !Array.isArray(rawDatos.diasCompletadosNotificados) && typeof rawDatos.diasCompletadosNotificados === 'object')
+        ? rawDatos.diasCompletadosNotificados
+        : {}
+    };
+  }
+
+  fusionarDatosUsuario(local, remoto, userCfg) {
+    const l = this.normalizarDatosUsuario(local, userCfg);
+    const r = this.normalizarDatosUsuario(remoto, userCfg);
+    const marcasFusionadas = { ...l.marcas };
+
+    Object.keys(r.marcas).forEach(mesKey => {
+      const mRemoto = (r.marcas[mesKey] && !Array.isArray(r.marcas[mesKey]) && typeof r.marcas[mesKey] === 'object') ? r.marcas[mesKey] : {};
+      const mLocal = (marcasFusionadas[mesKey] && !Array.isArray(marcasFusionadas[mesKey]) && typeof marcasFusionadas[mesKey] === 'object') ? marcasFusionadas[mesKey] : {};
+      marcasFusionadas[mesKey] = { ...mLocal, ...mRemoto };
+    });
+
+    return {
+      habitos: Array.isArray(remoto?.habitos) && remoto.habitos.length > 0 ? remoto.habitos : l.habitos,
+      frases: { ...l.frases, ...r.frases },
+      marcas: marcasFusionadas,
+      celebrados: { ...l.celebrados, ...r.celebrados },
+      diasCompletadosNotificados: { ...l.diasCompletadosNotificados, ...r.diasCompletadosNotificados }
+    };
+  }
+
   cargarDatosLocales() {
     Object.keys(APP_CONFIG.USERS).forEach(uid => {
       const uCfg = APP_CONFIG.USERS[uid];
       const raw = localStorage.getItem(this.getStorageKey(uid));
       if (raw) {
         try {
-          this.todosUsuariosDatos[uid] = JSON.parse(raw);
+          this.todosUsuariosDatos[uid] = this.normalizarDatosUsuario(JSON.parse(raw), uCfg);
         } catch (e) {
           this.todosUsuariosDatos[uid] = this.crearDatosIniciales(uCfg);
         }
@@ -446,10 +575,10 @@ class RegistroAtomicoApp {
   crearDatosIniciales(user) {
     return {
       habitos: JSON.parse(JSON.stringify(user.habitosDefault)),
-      frases: {},
-      marcas: {},
-      celebrados: {},
-      diasCompletadosNotificados: {}
+      frases: { _init: '' },
+      marcas: { _init: { _init: 0 } },
+      celebrados: { _init: false },
+      diasCompletadosNotificados: { _init: false }
     };
   }
 
@@ -475,15 +604,40 @@ class RegistroAtomicoApp {
       }
 
       if (store.usuarios) {
+        let huboFusionLocal = false;
         Object.keys(APP_CONFIG.USERS).forEach(uid => {
+          const uCfg = APP_CONFIG.USERS[uid];
           if (store.usuarios[uid]) {
-            this.todosUsuariosDatos[uid] = store.usuarios[uid];
-            localStorage.setItem(this.getStorageKey(uid), JSON.stringify(store.usuarios[uid]));
+            const localExistente = this.todosUsuariosDatos[uid];
+            const normalizadoRemoto = this.normalizarDatosUsuario(store.usuarios[uid], uCfg);
+
+            if (uid === this.usuarioActivo && localExistente) {
+              // Si el servidor tenía marcas vacías (p. ej. array [] por bug previo) pero en local había marcas, las fusionamos sin perder nada
+              const fusionado = this.fusionarDatosUsuario(localExistente, normalizadoRemoto, uCfg);
+              const cantRemota = Object.values(normalizadoRemoto.marcas || {}).reduce((acc, m) => acc + Object.keys(m || {}).length, 0);
+              const cantFusion = Object.values(fusionado.marcas || {}).reduce((acc, m) => acc + Object.keys(m || {}).length, 0);
+              if (cantFusion > cantRemota) {
+                huboFusionLocal = true;
+              }
+              this.todosUsuariosDatos[uid] = fusionado;
+            } else {
+              this.todosUsuariosDatos[uid] = normalizadoRemoto;
+            }
+            localStorage.setItem(this.getStorageKey(uid), JSON.stringify(this.todosUsuariosDatos[uid]));
           }
         });
 
         if (store.usuarios[this.usuarioActivo]) {
-          this.datos = store.usuarios[this.usuarioActivo];
+          this.datos = this.todosUsuariosDatos[this.usuarioActivo];
+          if (huboFusionLocal) {
+            await this.guardarDatos();
+          }
+          if (esPolling) {
+            this.renderizarCuadricula();
+            this.actualizarEstadisticasRapidas();
+            this.evaluarReglaInquebrantable();
+            this.evaluarAlarma2DiasSinRellenar();
+          }
         } else if (this.datos) {
           await this.guardarDatos();
         }
@@ -620,6 +774,9 @@ class RegistroAtomicoApp {
     const input = document.getElementById('inspiration-quote-input');
     const valor = input.value.trim();
     const mesKey = this.getMesKey();
+    if (!this.datos.frases || Array.isArray(this.datos.frases) || typeof this.datos.frases !== 'object') {
+      this.datos.frases = {};
+    }
     if (valor) {
       this.datos.frases[mesKey] = valor;
       this.guardarDatos();
@@ -826,9 +983,13 @@ class RegistroAtomicoApp {
   // ========================================================
   async alternarEstadoCasilla(habitoId, dia) {
     const mesKey = this.getMesKey();
-    if (!this.datos.marcas[mesKey]) {
-      this.datos.marcas[mesKey] = {};
+    if (!this.datos.marcas || Array.isArray(this.datos.marcas) || typeof this.datos.marcas !== 'object') {
+      this.datos.marcas = {};
     }
+    if (!this.datos.marcas[mesKey] || Array.isArray(this.datos.marcas[mesKey]) || typeof this.datos.marcas[mesKey] !== 'object') {
+      this.datos.marcas[mesKey] = { _init: 0 };
+    }
+    this.datos.marcas[mesKey]._init = 0;
 
     const cellKey = `${habitoId}_${dia}`;
     const estadoActual = this.datos.marcas[mesKey][cellKey] || APP_CONFIG.ESTADOS.VACIO;
@@ -850,12 +1011,14 @@ class RegistroAtomicoApp {
 
     sessionStorage.removeItem(`alarma_silenciada_${this.usuarioActivo}_${this.getFechaHoyISO()}`);
 
-    await this.guardarDatos();
+    // Actualizar interfaz de inmediato antes de esperar la red
     this.renderizarCuadricula();
     this.actualizarEstadisticasRapidas();
     this.evaluarReglaInquebrantable();
     this.evaluarAlarma2DiasSinRellenar();
     this.comprobarConsolidacionHabito(habitoId);
+
+    await this.guardarDatos();
     await this.comprobarSiCompletoTodoElDia(dia, mesKey);
   }
 
@@ -882,7 +1045,7 @@ class RegistroAtomicoApp {
 
   async comprobarSiCompletoTodoElDia(dia, mesKey) {
     const progreso = this.calcularProgresoDia(this.datos, dia, mesKey);
-    if (!this.datos.diasCompletadosNotificados) {
+    if (!this.datos.diasCompletadosNotificados || Array.isArray(this.datos.diasCompletadosNotificados) || typeof this.datos.diasCompletadosNotificados !== 'object') {
       this.datos.diasCompletadosNotificados = {};
     }
 
@@ -1174,6 +1337,9 @@ class RegistroAtomicoApp {
     }
 
     const celebracionKey = `${habitoId}_${mesKey}`;
+    if (!this.datos.celebrados || Array.isArray(this.datos.celebrados) || typeof this.datos.celebrados !== 'object') {
+      this.datos.celebrados = {};
+    }
     if (verdes >= APP_CONFIG.META_CONSOLIDACION && !this.datos.celebrados[celebracionKey]) {
       this.datos.celebrados[celebracionKey] = true;
       this.guardarDatos();
